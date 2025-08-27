@@ -5,9 +5,8 @@ A comprehensive pipeline for generating synthetic time series data using various
 ## Installation
 
 ```bash
-# Clone and setup
-git clone <repository_url>
-cd Thesis-Codebase
+# Clone repo
+git clone https://github.com/matejkutirov/AutoTSG.git
 
 # Create virtual environment
 python -m venv venv
