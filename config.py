@@ -18,7 +18,7 @@ DEEP_MODELS_CONFIG = {
         "reconstruction_wt": 3.0,
     },
     "timegan": {
-        "epochs": 1000,
+        "epochs": 500,
         "hidden_dim": 24,
         "num_layers": 3,
         "z_dim": None,  # Will be set to feat_dim automatically
