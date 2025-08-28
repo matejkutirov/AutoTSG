@@ -1,7 +1,7 @@
 import argparse
-from pipeline import run_pipeline
-from automl import automl_model_selection
-from config import MODEL_SELECTION_CONFIG
+from src.pipeline import run_pipeline
+from src.automl import automl_model_selection
+from config.config import MODEL_SELECTION_CONFIG
 
 
 def main():
