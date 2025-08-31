@@ -11,7 +11,7 @@ from typing import Dict, Any, Tuple
 from src.data_loading import data_loading
 from src.data_preprocessing import data_preprocessing
 from src.model_generation import model_generation, generate_data, save_generated_data
-from src.evaluation import evaluation
+from src.evaluation import evaluation, calculate_comprehensive_metrics
 
 
 class ARIMAEstimator(BaseEstimator):
@@ -262,6 +262,7 @@ class TimeVAEEstimator(BaseEstimator):
         self._model = None
         self.train_sequences = None
         self.test_sequences = None
+        self._generated_data = None
 
     @classmethod
     def search_space(cls, data_size, task):
@@ -305,6 +306,20 @@ class TimeVAEEstimator(BaseEstimator):
             # Start timer for actual time enforcement
             model_start_time = time.time()
 
+            # Initialize the model once
+            print("Initializing TimeVAE model...")
+            model_results = model_generation(
+                sample_train,
+                sample_test,
+                "timevae",
+                max_epochs=0,  # 0 epochs to just initialize
+            )
+            self._model = model_results["model"]
+
+            # Generate initial synthetic data after training
+            if model_results["generated_data"] is not None:
+                self._generated_data = model_results["generated_data"]
+
             # Train epoch by epoch with time budget checking
             for epoch in range(n_epochs):
                 # Check if time budget exceeded
@@ -317,11 +332,9 @@ class TimeVAEEstimator(BaseEstimator):
                     )
                     break
 
-                # Train just one epoch at a time
-                model_results = model_generation(
-                    sample_train, sample_test, "timevae", max_epochs=1
-                )
-                self._model = model_results["model"]
+                print(f"Training epoch {epoch + 1}/{n_epochs}...")
+                # Train one more epoch on the existing model
+                self._model.fit_on_data(sample_train, max_epochs=1, verbose=1)
 
             actual_time = time.time() - model_start_time
             print(f"TimeVAE training completed in {actual_time:.1f}s!")
@@ -346,26 +359,34 @@ class TimeVAEEstimator(BaseEstimator):
         # Generate synthetic data - ensure we generate exactly X.shape[0] samples
         num_samples = X.shape[0]
 
-        # Check if generated_data exists, if not generate it on-the-fly
+        # Use stored generated data if available, otherwise generate on-the-fly
         if (
-            "generated_data" in model_results
-            and model_results["generated_data"] is not None
+            self._generated_data is not None
+            and len(self._generated_data) >= num_samples
         ):
-            generated_data = model_results["generated_data"]
+            generated_data = self._generated_data[:num_samples]
         else:
             # Generate data on-the-fly using the trained model
             if hasattr(self._model, "get_prior_samples"):  # TimeVAE
                 generated_data = self._model.get_prior_samples(num_samples)
+                # Store for future use
+                self._generated_data = generated_data
             elif hasattr(self._model, "generate"):  # TimeGAN
                 generated_data = self._model.generate(num_samples)
                 generated_data = np.array(generated_data)
+                # Store for future use
+                self._generated_data = generated_data
             elif hasattr(self._model, "sample"):  # FourierFlow, TimeTransformer
                 generated_data = self._model.sample(num_samples)
                 if hasattr(generated_data, "detach"):  # PyTorch tensor
                     generated_data = generated_data.detach().cpu().numpy()
+                # Store for future use
+                self._generated_data = generated_data
             else:
                 # Fallback to the original generate_data function
                 generated_data = generate_data(model_results, num_samples=num_samples)
+                # Store for future use
+                self._generated_data = generated_data
 
         # For TimeVAE, we need to return a single value per sample
         # Use the mean across the sequence and features
@@ -392,6 +413,7 @@ class TimeGANEstimator(BaseEstimator):
         self._model = None
         self.train_sequences = None
         self.test_sequences = None
+        self._generated_data = None
 
     @classmethod
     def search_space(cls, data_size, task):
@@ -435,6 +457,20 @@ class TimeGANEstimator(BaseEstimator):
             # Start timer for actual time enforcement
             model_start_time = time.time()
 
+            # Initialize the model once
+            print("Initializing TimeGAN model...")
+            model_results = model_generation(
+                sample_train,
+                sample_test,
+                "timegan",
+                max_epochs=0,  # 0 iterations to just initialize
+            )
+            self._model = model_results["model"]
+
+            # Generate initial synthetic data after training
+            if model_results["generated_data"] is not None:
+                self._generated_data = model_results["generated_data"]
+
             # Train iteration by iteration with time budget checking
             for iteration in range(n_iterations):
                 # Check if time budget exceeded
@@ -447,11 +483,9 @@ class TimeGANEstimator(BaseEstimator):
                     )
                     break
 
-                # Train just one iteration at a time
-                model_results = model_generation(
-                    sample_train, sample_test, "timegan", max_epochs=1
-                )
-                self._model = model_results["model"]
+                print(f"Training iteration {iteration + 1}/{n_iterations}...")
+                # Train one more iteration on the existing model
+                self._model.train(sample_train, iterations=1)
 
             actual_time = time.time() - model_start_time
             print(f"TimeGAN training completed in {actual_time:.1f}s!")
@@ -476,26 +510,34 @@ class TimeGANEstimator(BaseEstimator):
         # Generate synthetic data - ensure we generate exactly X.shape[0] samples
         num_samples = X.shape[0]
 
-        # Check if generated_data exists, if not generate it on-the-fly
+        # Use stored generated data if available, otherwise generate on-the-fly
         if (
-            "generated_data" in model_results
-            and model_results["generated_data"] is not None
+            self._generated_data is not None
+            and len(self._generated_data) >= num_samples
         ):
-            generated_data = model_results["generated_data"]
+            generated_data = self._generated_data[:num_samples]
         else:
             # Generate data on-the-fly using the trained model
             if hasattr(self._model, "get_prior_samples"):  # TimeVAE
                 generated_data = self._model.get_prior_samples(num_samples)
+                # Store for future use
+                self._generated_data = generated_data
             elif hasattr(self._model, "generate"):  # TimeGAN
                 generated_data = self._model.generate(num_samples)
                 generated_data = np.array(generated_data)
+                # Store for future use
+                self._generated_data = generated_data
             elif hasattr(self._model, "sample"):  # FourierFlow, TimeTransformer
                 generated_data = self._model.sample(num_samples)
                 if hasattr(generated_data, "detach"):  # PyTorch tensor
                     generated_data = generated_data.detach().cpu().numpy()
+                # Store for future use
+                self._generated_data = generated_data
             else:
                 # Fallback to the original generate_data function
                 generated_data = generate_data(model_results, num_samples=num_samples)
+                # Store for future use
+                self._generated_data = generated_data
 
         # For TimeGAN, we need to return a single value per sample
         # Use the mean across the sequence and features
@@ -522,6 +564,7 @@ class FourierFlowEstimator(BaseEstimator):
         self._model = None
         self.train_sequences = None
         self.test_sequences = None
+        self._generated_data = None
 
     @classmethod
     def search_space(cls, data_size, task):
@@ -565,6 +608,20 @@ class FourierFlowEstimator(BaseEstimator):
             # Start timer for actual time enforcement
             model_start_time = time.time()
 
+            # Initialize the model once
+            print("Initializing FourierFlow model...")
+            model_results = model_generation(
+                sample_train,
+                sample_test,
+                "fourierflow",
+                max_epochs=0,  # 0 epochs to just initialize
+            )
+            self._model = model_results["model"]
+
+            # Generate initial synthetic data after training
+            if model_results["generated_data"] is not None:
+                self._generated_data = model_results["generated_data"]
+
             # Train epoch by epoch with time budget checking
             for epoch in range(n_epochs):
                 # Check if time budget exceeded
@@ -577,11 +634,17 @@ class FourierFlowEstimator(BaseEstimator):
                     )
                     break
 
-                # Train just one epoch at a time
-                model_results = model_generation(
-                    sample_train, sample_test, "fourierflow", max_epochs=1
+                print(f"Training epoch {epoch + 1}/{n_epochs}...")
+                # Train one more epoch on the existing model
+                self._model.fit(
+                    sample_train.reshape(
+                        sample_train.shape[0], -1
+                    ),  # Flatten for FourierFlow
+                    epochs=1,
+                    batch_size=32,  # Default batch size
+                    learning_rate=0.001,  # Default learning rate
+                    display_step=100,
                 )
-                self._model = model_results["model"]
 
             actual_time = time.time() - model_start_time
             print(f"FourierFlow training completed in {actual_time:.1f}s!")
@@ -606,26 +669,34 @@ class FourierFlowEstimator(BaseEstimator):
         # Generate synthetic data - ensure we generate exactly X.shape[0] samples
         num_samples = X.shape[0]
 
-        # Check if generated_data exists, if not generate it on-the-fly
+        # Use stored generated data if available, otherwise generate on-the-fly
         if (
-            "generated_data" in model_results
-            and model_results["generated_data"] is not None
+            self._generated_data is not None
+            and len(self._generated_data) >= num_samples
         ):
-            generated_data = model_results["generated_data"]
+            generated_data = self._generated_data[:num_samples]
         else:
             # Generate data on-the-fly using the trained model
             if hasattr(self._model, "get_prior_samples"):  # TimeVAE
                 generated_data = self._model.get_prior_samples(num_samples)
+                # Store for future use
+                self._generated_data = generated_data
             elif hasattr(self._model, "generate"):  # TimeGAN
                 generated_data = self._model.generate(num_samples)
                 generated_data = np.array(generated_data)
+                # Store for future use
+                self._generated_data = generated_data
             elif hasattr(self._model, "sample"):  # FourierFlow, TimeTransformer
                 generated_data = self._model.sample(num_samples)
                 if hasattr(generated_data, "detach"):  # PyTorch tensor
                     generated_data = generated_data.detach().cpu().numpy()
+                # Store for future use
+                self._generated_data = generated_data
             else:
                 # Fallback to the original generate_data function
                 generated_data = generate_data(model_results, num_samples=num_samples)
+                # Store for future use
+                self._generated_data = generated_data
 
         # For FourierFlow, we need to return a single value per sample
         # Use the mean across the sequence and features
@@ -652,6 +723,7 @@ class TimeTransformerEstimator(BaseEstimator):
         self._model = None
         self.train_sequences = None
         self.test_sequences = None
+        self._generated_data = None
 
     @classmethod
     def search_space(cls, data_size, task):
@@ -695,6 +767,20 @@ class TimeTransformerEstimator(BaseEstimator):
             # Start timer for actual time enforcement
             model_start_time = time.time()
 
+            # Initialize the model once
+            print("Initializing TimeTransformer model...")
+            model_results = model_generation(
+                sample_train,
+                sample_test,
+                "timetransformer",
+                max_epochs=0,  # 0 epochs to just initialize
+            )
+            self._model = model_results["model"]
+
+            # Generate initial synthetic data after training
+            if model_results["generated_data"] is not None:
+                self._generated_data = model_results["generated_data"]
+
             # Train epoch by epoch with time budget checking
             for epoch in range(n_epochs):
                 # Check if time budget exceeded
@@ -707,16 +793,18 @@ class TimeTransformerEstimator(BaseEstimator):
                     )
                     break
 
-                # Train just one epoch at a time
-                model_results = model_generation(
-                    sample_train, sample_test, "timetransformer", max_epochs=1
+                print(f"Training epoch {epoch + 1}/{n_epochs}...")
+                # Train one more epoch on the existing model
+                self._model.fit(
+                    sample_train,
+                    epochs=1,
+                    batch_size=32,  # Default batch size
+                    learning_rate=0.001,  # Default learning rate
+                    verbose=True,
                 )
-                self._model = model_results["model"]
 
             actual_time = time.time() - model_start_time
             print(f"TimeTransformer training completed in {actual_time:.1f}s!")
-
-            self._model = model_results["model"]
             return self
         except Exception as e:
             raise RuntimeError(f"Failed to train TimeTransformer: {e}")
@@ -737,26 +825,34 @@ class TimeTransformerEstimator(BaseEstimator):
         # Generate synthetic data - ensure we generate exactly X.shape[0] samples
         num_samples = X.shape[0]
 
-        # Check if generated_data exists, if not generate it on-the-fly
+        # Use stored generated data if available, otherwise generate on-the-fly
         if (
-            "generated_data" in model_results
-            and model_results["generated_data"] is not None
+            self._generated_data is not None
+            and len(self._generated_data) >= num_samples
         ):
-            generated_data = model_results["generated_data"]
+            generated_data = self._generated_data[:num_samples]
         else:
             # Generate data on-the-fly using the trained model
             if hasattr(self._model, "get_prior_samples"):  # TimeVAE
                 generated_data = self._model.get_prior_samples(num_samples)
+                # Store for future use
+                self._generated_data = generated_data
             elif hasattr(self._model, "generate"):  # TimeGAN
                 generated_data = self._model.generate(num_samples)
                 generated_data = np.array(generated_data)
+                # Store for future use
+                self._generated_data = generated_data
             elif hasattr(self._model, "sample"):  # FourierFlow, TimeTransformer
                 generated_data = self._model.sample(num_samples)
                 if hasattr(generated_data, "detach"):  # PyTorch tensor
                     generated_data = generated_data.detach().cpu().numpy()
+                # Store for future use
+                self._generated_data = generated_data
             else:
                 # Fallback to the original generate_data function
                 generated_data = generate_data(model_results, num_samples=num_samples)
+                # Store for future use
+                self._generated_data = generated_data
 
         # For TimeTransformer, we need to return a single value per sample
         # Use the mean across the sequence and features
@@ -791,6 +887,28 @@ def automl_model_selection(
     models_to_test: list = None,
 ) -> Dict[str, Any]:
     """Automatically select the best time series forecasting model using FLAML's search strategy"""
+
+    # Normalize metric to lowercase for FLAML compatibility
+    metric = metric.upper()
+
+    # Validate metric
+    supported_metrics = [
+        "RMSE",
+        "MAE",
+        "ED",
+        "DTW",
+        "MDD",
+        "ACD",
+        "SD",
+        "KD",
+        "DS",
+        "PS",
+        "C-FID",
+    ]
+    if metric not in supported_metrics:
+        raise ValueError(
+            f"Unsupported metric: {metric}. Supported metrics: {', '.join(supported_metrics)}"
+        )
 
     print(f"Starting AutoML model selection for {dataset_name}")
     print(f"Time budget: {time_budget} seconds")
@@ -870,7 +988,7 @@ def automl_model_selection(
     # Define AutoML settings
     automl_settings = {
         "time_budget": time_budget,
-        "metric": "rmse",  # Use our custom metric
+        "metric": metric,  # Use the passed metric parameter
         "task": "regression",  # FLAML requires a task
         "estimator_list": models_to_test,  # Use the models we registered
         "log_file_name": f"automl_{dataset_name}.log",
@@ -927,13 +1045,152 @@ def automl_model_selection(
             y_pred = estimator.predict(
                 X_train[:100]
             )  # Predict on subset for evaluation
-            model_score = np.sqrt(np.mean((y_train[:100] - y_pred.flatten()) ** 2))
+
+            # Calculate all comprehensive metrics for evaluation
+            print(f"  Calculating comprehensive metrics for {model_name}...")
+            try:
+                # Generate synthetic data using the trained model for comprehensive evaluation
+                if hasattr(estimator._model, "get_prior_samples"):  # TimeVAE
+                    generated_data = estimator._model.get_prior_samples(100)
+                elif hasattr(estimator._model, "generate"):  # TimeGAN
+                    generated_data = estimator._model.generate(100)
+                    generated_data = np.array(generated_data)
+                elif hasattr(
+                    estimator._model, "sample"
+                ):  # FourierFlow, TimeTransformer
+                    generated_data = estimator._model.sample(100)
+                    if hasattr(generated_data, "detach"):  # PyTorch tensor
+                        generated_data = generated_data.detach().cpu().numpy()
+                else:
+                    # For traditional models (ARIMA, Exp_Smooth), use model_generation to get synthetic data
+                    if model_name in ["arima", "exp_smooth"]:
+                        print(
+                            f"    Generating synthetic data for {model_name} using model_generation..."
+                        )
+                        # Use a small subset for generation to avoid memory issues
+                        sample_size = min(100, len(train_sequences))
+                        sample_train = train_sequences[:sample_size]
+                        sample_test = test_sequences[:sample_size]
+
+                        print(f"    Sample train shape: {sample_train.shape}")
+                        print(f"    Sample test shape: {sample_test.shape}")
+
+                        # Generate synthetic data using the model_generation function
+                        model_results = model_generation(
+                            sample_train, sample_test, model_name
+                        )
+                        generated_data = model_results.get("generated_data")
+
+                        print(
+                            f"    Model generation results keys: {list(model_results.keys())}"
+                        )
+                        print(
+                            f"    Generated data from model_generation: {generated_data is not None}"
+                        )
+
+                        if generated_data is None:
+                            # If no generated data, create fallback data
+                            print(
+                                f"    Warning: No generated data from {model_name}, creating fallback..."
+                            )
+                            generated_data = np.random.randn(
+                                sample_size,
+                                train_sequences.shape[1],
+                                train_sequences.shape[2],
+                            )
+                        else:
+                            print(
+                                f"    Successfully got generated data from {model_name}"
+                            )
+                            print(f"    Generated data shape: {generated_data.shape}")
+                            print(f"    Generated data type: {type(generated_data)}")
+                            print(
+                                f"    Generated data min/max: {generated_data.min():.6f}/{generated_data.max():.6f}"
+                            )
+                    else:
+                        # Fallback: use the estimator's predict method to generate data
+                        generated_data = np.array(
+                            [
+                                estimator.predict(X_train[i : i + 1]).reshape(-1)
+                                for i in range(100)
+                            ]
+                        )
+
+                # Ensure generated data has the right shape (samples, seq_len, features)
+                if generated_data is None:
+                    raise ValueError(f"Generated data is None for {model_name}")
+
+                # Handle different data shapes
+                if generated_data.ndim == 2:
+                    # If 2D, reshape to 3D assuming single feature
+                    generated_data = generated_data.reshape(
+                        generated_data.shape[0], -1, 1
+                    )
+                elif generated_data.ndim == 1:
+                    # If 1D, reshape to 3D
+                    generated_data = generated_data.reshape(
+                        generated_data.shape[0], 1, 1
+                    )
+
+                # Validate that we have the expected 3D shape
+                if generated_data.ndim != 3:
+                    raise ValueError(
+                        f"Generated data for {model_name} has unexpected shape: {generated_data.shape}"
+                    )
+
+                print(f"    Generated data shape: {generated_data.shape}")
+
+                # Get original data for comparison (use training sequences)
+                original_data = train_sequences[:100]
+
+                # Ensure same dimensions
+                min_samples = min(original_data.shape[0], generated_data.shape[0])
+                min_seq_len = min(original_data.shape[1], generated_data.shape[1])
+                min_feat = min(original_data.shape[2], generated_data.shape[2])
+
+                original_subset = original_data[:min_samples, :min_seq_len, :min_feat]
+                generated_subset = generated_data[:min_samples, :min_seq_len, :min_feat]
+
+                # Calculate all comprehensive metrics
+                print(
+                    f"    Comparing {min_samples} samples, {min_seq_len} seq_len, {min_feat} features"
+                )
+                comprehensive_metrics = calculate_comprehensive_metrics(
+                    original_subset, generated_subset
+                )
+
+                # Add traditional metrics to comprehensive metrics
+                comprehensive_metrics["RMSE"] = np.sqrt(
+                    np.mean((y_train[:100] - y_pred.flatten()) ** 2)
+                )
+                comprehensive_metrics["MAE"] = np.mean(
+                    np.abs(y_train[:100] - y_pred.flatten())
+                )
+
+                # Get the score for the selected metric
+                if metric in comprehensive_metrics:
+                    model_score = comprehensive_metrics[metric]
+                    print(f"    {metric} score: {model_score:.6f}")
+                else:
+                    raise ValueError(
+                        f"Metric {metric} not found in comprehensive metrics"
+                    )
+
+                # Store all metrics for later reference
+                estimator._comprehensive_metrics = comprehensive_metrics
+
+            except Exception as e:
+                print(
+                    f"Warning: Could not calculate comprehensive metrics for {model_name}: {e}"
+                )
+                print("Falling back to basic RMSE calculation")
+                model_score = np.sqrt(np.mean((y_train[:100] - y_pred.flatten()) ** 2))
 
             model_time = time.time() - model_start_time
             print(
                 f"{model_name} training completed in {model_time:.1f}s (budget: {model_budget}s)"
             )
-            print(f"{model_name} RMSE score: {model_score:.4f}")
+            print(f"{model_name} {metric} score: {model_score:.4f}")
 
             # Store results
             result = {
@@ -943,6 +1200,9 @@ def automl_model_selection(
                 "time_used": model_time,
                 "budget": model_budget,
                 "estimator": estimator,
+                "comprehensive_metrics": getattr(
+                    estimator, "_comprehensive_metrics", {}
+                ),
             }
             all_results.append(result)
 
@@ -990,19 +1250,32 @@ def automl_model_selection(
     print(f"Time budget: {time_budget} seconds")
     print(f"Total models tested: {len(models_to_test)}")
     print(f"Best model: {best_config.get('model_type', 'unknown')}")
-    print(f"Best score (RMSE): {best_score:.4f}")
+    print(f"Best score ({metric}): {best_score:.4f}")
     print(f"Best configuration: {best_config}")
 
     print(f"\nSequential Training Summary:")
     for result in all_results:
         print(
-            f"✓ {result['model_name']}: {result['time_used']:.1f}s used, {result['budget']}s budget, RMSE: {result['score']:.4f}"
+            f"✓ {result['model_name']}: {result['time_used']:.1f}s used, {result['budget']}s budget, {metric}: {result['score']:.4f}"
         )
 
+        # Show comprehensive metrics if available
+        if result.get("comprehensive_metrics"):
+            comp_metrics = result["comprehensive_metrics"]
+            for metric_name, metric_value in comp_metrics.items():
+                if metric_name != metric:  # Don't show the selected metric again
+                    print(f"      {metric_name}: {metric_value:.6f}")
+            print()
+
     print(
-        f"\nWinner: {best_config.get('model_type', 'unknown')} with RMSE: {best_score:.4f}"
+        f"\nWinner: {best_config.get('model_type', 'unknown')} with {metric.upper()}: {best_score:.4f}"
     )
     print(f"Reason: Best performance among all sequentially trained models")
+
+    # Save AutoML results to JSON file
+    save_automl_results(
+        dataset_name, metric, time_budget, all_results, best_config, best_score
+    )
 
     return {
         "best_model": best_model,
@@ -1011,6 +1284,89 @@ def automl_model_selection(
         "best_score": best_score,
         "automl_results": model_results["automl_results"],
     }
+
+
+def save_automl_results(
+    dataset_name, metric, time_budget, all_results, best_config, best_score
+):
+    """Save AutoML results to a JSON file"""
+    import json
+    import os
+    from datetime import datetime
+
+    # Create results directory if it doesn't exist
+    results_dir = "results"
+    os.makedirs(results_dir, exist_ok=True)
+
+    # Prepare the results structure for this specific run
+    run_results = {
+        "metric": metric,
+        "selected_model": best_config.get("model_type", "unknown"),
+        "best_score": best_score,
+        "all_models": {},
+    }
+
+    # Add results for each model
+    for result in all_results:
+        model_name = result["model_name"]
+        run_results["all_models"][model_name] = {
+            "score": result["score"],
+            "time_used": result["time_used"],
+            "budget": result["budget"],
+            "comprehensive_metrics": result.get("comprehensive_metrics", {}),
+        }
+
+    # Load existing results if file exists
+    filename = os.path.join(results_dir, "automl_results.json")
+    existing_results = {}
+
+    if os.path.exists(filename):
+        try:
+            with open(filename, "r") as f:
+                existing_results = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError):
+            existing_results = {}
+
+    # Initialize dataset structure if it doesn't exist
+    if dataset_name not in existing_results:
+        existing_results[dataset_name] = {}
+
+    # Add or update the time budget entry
+    time_budget_key = f"time_budget_{time_budget}"
+    existing_results[dataset_name][time_budget_key] = run_results
+
+    # Save updated results back to file
+    try:
+        with open(filename, "w") as f:
+            json.dump(existing_results, f, indent=2, default=str)
+        print(f"AutoML results saved to: {filename}")
+    except Exception as e:
+        print(f"Warning: Could not save AutoML results to {filename}: {e}")
+
+
+def list_available_metrics():
+    """List all available evaluation metrics with descriptions"""
+    metrics_info = {
+        "rmse": "Root Mean Square Error - Traditional regression metric, lower is better",
+        "mae": "Mean Absolute Error - Traditional regression metric, lower is better",
+        "ed": "Euclidean Distance - Average distance between original and generated sequences, lower is better",
+        "dtw": "Dynamic Time Warping - Time-aligned distance measure, lower is better",
+        "mdd": "Marginal Distribution Difference - Histogram-based distribution comparison, lower is better",
+        "acd": "Autocorrelation Difference - Temporal correlation preservation, lower is better",
+        "sd": "Skewness Difference - Distribution shape similarity, lower is better",
+        "kd": "Kurtosis Difference - Distribution tail behavior similarity, lower is better",
+        "ds": "Discriminative Score - Ability to distinguish real vs generated data, lower is better",
+        "ps": "Predictive Score - Predictive power of generated data, lower is better",
+        "c-fid": "Contextual-FID - Feature distribution similarity, lower is better",
+    }
+
+    print("Available Evaluation Metrics:")
+    print("=" * 50)
+    for metric, description in metrics_info.items():
+        print(f"{metric.upper():<8}: {description}")
+    print("\nNote: All metrics are calculated for each model.")
+    print("The selected metric is used for model selection (lowest value wins).")
+    return metrics_info
 
 
 def quick_automl_test(

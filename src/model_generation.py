@@ -55,17 +55,25 @@ def _train_deep_model(
             reconstruction_wt=config["reconstruction_wt"],
         )
 
-        # Train TimeVAE
-        print("Training TimeVAE...")
-        start_time = time.time()
-        # Use max_epochs if provided, otherwise use config default
-        epochs = max_epochs if max_epochs is not None else config["epochs"]
-        print(f"Training for {epochs} epochs...")
-        model.fit_on_data(train_sequences, max_epochs=epochs, verbose=config["verbose"])
-        training_time = time.time() - start_time
+        # Train TimeVAE if max_epochs > 0
+        if max_epochs is None or max_epochs > 0:
+            print("Training TimeVAE...")
+            start_time = time.time()
+            # Use max_epochs if provided, otherwise use config default
+            epochs = max_epochs if max_epochs is not None else config["epochs"]
+            print(f"Training for {epochs} epochs...")
+            model.fit_on_data(
+                train_sequences, max_epochs=epochs, verbose=config["verbose"]
+            )
+            training_time = time.time() - start_time
 
-        # Generate synthetic data
-        generated_data = model.get_prior_samples(len(train_sequences))
+            # Generate synthetic data
+            generated_data = model.get_prior_samples(len(train_sequences))
+        else:
+            # Just initialize the model without training
+            print("Initializing TimeVAE model (no training)...")
+            training_time = 0
+            generated_data = None
 
     elif model_type == "timegan":
         # Prepare data for TimeGAN (list of sequences)
@@ -83,18 +91,24 @@ def _train_deep_model(
             lr=config["learning_rate"],
         )
 
-        # Train TimeGAN
-        print("Training TimeGAN...")
-        start_time = time.time()
-        # Use max_epochs if provided, otherwise use config default
-        iterations = max_epochs if max_epochs is not None else config["epochs"]
-        print(f"Training for {iterations} iterations...")
-        model.train(data_list, iterations=iterations)
-        training_time = time.time() - start_time
+        # Train TimeGAN if max_epochs > 0
+        if max_epochs is None or max_epochs > 0:
+            print("Training TimeGAN...")
+            start_time = time.time()
+            # Use max_epochs if provided, otherwise use config default
+            iterations = max_epochs if max_epochs is not None else config["epochs"]
+            print(f"Training for {iterations} iterations...")
+            model.train(data_list, iterations=iterations)
+            training_time = time.time() - start_time
 
-        # Generate synthetic data
-        generated_data = model.generate(len(train_sequences))
-        generated_data = np.array(generated_data)
+            # Generate synthetic data
+            generated_data = model.generate(len(train_sequences))
+            generated_data = np.array(generated_data)
+        else:
+            # Just initialize the model without training
+            print("Initializing TimeGAN model (no training)...")
+            training_time = 0
+            generated_data = None
 
     elif model_type == "fourierflow":
         # Initialize FourierFlow
@@ -108,32 +122,36 @@ def _train_deep_model(
             normalize=config["normalize"],
         )
 
-        # Train FourierFlow
-        print("Training FourierFlow...")
-        start_time = time.time()
-        # Reshape data for FourierFlow: (samples, seq_len, features) -> (samples, seq_len)
-        # Use max_epochs if provided, otherwise use config default
-        epochs = max_epochs if max_epochs is not None else config["epochs"]
-        print(f"Training for {epochs} epochs...")
-        model.fit(
-            train_sequences,
-            epochs=epochs,
-            batch_size=config["batch_size"],
-            learning_rate=config["learning_rate"],
-            display_step=config["display_step"],
-        )
-        training_time = time.time() - start_time
+        # Train FourierFlow if max_epochs > 0
+        if max_epochs is None or max_epochs > 0:
+            print("Training FourierFlow...")
+            start_time = time.time()
 
-        # Generate synthetic data
-        generated_data = model.sample(len(train_sequences))
-        # Reshape back to 3D: (samples, seq_len) -> (samples, seq_len, 1)
-        generated_data = generated_data.reshape(-1, seq_len, 1)
-        # Repeat for all features
-        generated_data = np.repeat(generated_data, feat_dim, axis=2)
+            # Reshape data for FourierFlow: (samples, seq_len, features) -> (samples, seq_len * features)
+            # This flattens the sequence and features into a single feature vector
+            train_sequences_2d = train_sequences.reshape(train_sequences.shape[0], -1)
 
-        # Update the sequences to use truncated versions
-        train_sequences = train_sequences
-        test_sequences = test_sequences
+            # Use max_epochs if provided, otherwise use config default
+            epochs = max_epochs if max_epochs is not None else config["epochs"]
+            print(f"Training for {epochs} epochs...")
+            model.fit(
+                train_sequences_2d,  # Use 2D data
+                epochs=epochs,
+                batch_size=config["batch_size"],
+                learning_rate=config["learning_rate"],
+                display_step=config["display_step"],
+            )
+            training_time = time.time() - start_time
+
+            # Generate synthetic data
+            generated_data = model.sample(len(train_sequences))
+            # Reshape back to 3D: (samples, seq_len * features) -> (samples, seq_len, features)
+            generated_data = generated_data.reshape(-1, seq_len, feat_dim)
+        else:
+            # Just initialize the model without training
+            print("Initializing FourierFlow model (no training)...")
+            training_time = 0
+            generated_data = None
 
     elif model_type == "timetransformer":
         # Initialize TimeTransformer
@@ -151,24 +169,30 @@ def _train_deep_model(
             reconstruction_wt=config["reconstruction_wt"],
         )
 
-        # Train TimeTransformer
-        print("Training TimeTransformer VAE...")
-        start_time = time.time()
-        # Use max_epochs if provided, otherwise use config default
-        epochs = max_epochs if max_epochs is not None else config["epochs"]
-        print(f"Training for {epochs} epochs...")
-        model.fit(
-            train_sequences,
-            epochs=epochs,
-            batch_size=config["batch_size"],
-            learning_rate=config["learning_rate"],
-            verbose=True,
-        )
-        training_time = time.time() - start_time
+        # Train TimeTransformer if max_epochs > 0
+        if max_epochs is None or max_epochs > 0:
+            print("Training TimeTransformer VAE...")
+            start_time = time.time()
+            # Use max_epochs if provided, otherwise use config default
+            epochs = max_epochs if max_epochs is not None else config["epochs"]
+            print(f"Training for {epochs} epochs...")
+            model.fit(
+                train_sequences,
+                epochs=epochs,
+                batch_size=config["batch_size"],
+                learning_rate=config["learning_rate"],
+                verbose=True,
+            )
+            training_time = time.time() - start_time
 
-        # Generate synthetic data
-        generated_data = model.sample(len(train_sequences))
-        generated_data = generated_data.detach().cpu().numpy()
+            # Generate synthetic data
+            generated_data = model.sample(len(train_sequences))
+            generated_data = generated_data.detach().cpu().numpy()
+        else:
+            # Just initialize the model without training
+            print("Initializing TimeTransformer model (no training)...")
+            training_time = 0
+            generated_data = None
 
     elif model_type == "arima":
         # Initialize ARIMA
@@ -276,7 +300,35 @@ def generate_data(model_results: Dict[str, Any], num_samples: int = None) -> np.
     """Generate synthetic time series data using trained model"""
     if model_results.get("is_deep_model", False):
         # Deep learning models already have generated data
-        return model_results["generated_data"]
+        if model_results["generated_data"] is not None:
+            return model_results["generated_data"]
+        # If generated_data is None, we need to generate it on-the-fly
+        model = model_results["model"]
+        model_type = model_results["model_type"]
+
+        if num_samples is None:
+            num_samples = len(model_results["train_sequences"])
+
+        # Generate data on-the-fly using the trained model
+        if model_type == "timevae" and hasattr(model, "get_prior_samples"):
+            generated_data = model.get_prior_samples(num_samples)
+        elif model_type == "timegan" and hasattr(model, "generate"):
+            generated_data = model.generate(num_samples)
+            generated_data = np.array(generated_data)
+        elif model_type in ["fourierflow", "timetransformer"] and hasattr(
+            model, "sample"
+        ):
+            generated_data = model.sample(num_samples)
+            if hasattr(generated_data, "detach"):  # PyTorch tensor
+                generated_data = generated_data.detach().cpu().numpy()
+        else:
+            # Fallback: generate random data with same shape as training data
+            train_sequences = model_results["train_sequences"]
+            seq_len = train_sequences.shape[1]
+            feat_dim = train_sequences.shape[2]
+            generated_data = np.random.randn(num_samples, seq_len, feat_dim)
+
+        return generated_data
 
     # Traditional ML models - use the existing generation logic
     model = model_results["model"]

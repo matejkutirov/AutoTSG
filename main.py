@@ -33,8 +33,49 @@ def main():
         default=300,
         help="Time budget in seconds for AutoML (default: 300)",
     )
+    parser.add_argument(
+        "--metric",
+        choices=[
+            "rmse",
+            "mae",
+            "ed",
+            "dtw",
+            "mdd",
+            "acd",
+            "sd",
+            "kd",
+            "ds",
+            "ps",
+            "c-fid",
+            "RMSE",
+            "MAE",
+            "ED",
+            "DTW",
+            "MDD",
+            "ACD",
+            "SD",
+            "KD",
+            "DS",
+            "PS",
+            "C-FID",
+        ],
+        default="MAE",
+        help="Optimization metric for AutoML model selection. Available metrics: 'rmse' (Root Mean Square Error), 'mae' (Mean Absolute Error), 'ed' (Euclidean Distance), 'dtw' (Dynamic Time Warping), 'mdd' (Marginal Distribution Difference), 'acd' (Autocorrelation Difference), 'sd' (Skewness Difference), 'kd' (Kurtosis Difference), 'ds' (Discriminative Score), 'ps' (Predictive Score), 'c-fid' (Contextual-FID). Case-insensitive. Default: MAE",
+    )
+    parser.add_argument(
+        "--list-metrics",
+        action="store_true",
+        help="List all available evaluation metrics with descriptions",
+    )
 
     args = parser.parse_args()
+
+    # Handle list-metrics argument
+    if args.list_metrics:
+        from src.automl import list_available_metrics
+
+        list_available_metrics()
+        return
 
     if args.ds.endswith((".csv", ".xlsx", ".xls")):
         file_path = args.ds
@@ -53,7 +94,7 @@ def main():
         try:
             # Run AutoML with specified models
             results = automl_model_selection(
-                dataset, args.time_budget, models_to_test=args.model
+                dataset, args.time_budget, metric=args.metric, models_to_test=args.model
             )
 
             print(f"\nAutoML completed successfully!")
