@@ -1,6 +1,6 @@
-# Time Series Generation Pipeline
-
 **This codebase is part of the Master Thesis by Matej Kutirov with title "Automated Model Selection for Time Series Data Generation".**
+
+# Time Series Generation Pipeline
 
 A comprehensive pipeline for generating synthetic time series data using various deep learning and statistical models, with automated model selection capabilities using FLAML AutoML.
 
