@@ -1,6 +1,8 @@
 # Time Series Generation Pipeline
 
-A comprehensive pipeline for generating synthetic time series data using various deep learning and statistical models.
+**This codebase is part of the Master Thesis by Matej Kutirov with title "Automated Model Selection for Time Series Data Generation".**
+
+A comprehensive pipeline for generating synthetic time series data using various deep learning and statistical models, with automated model selection capabilities using FLAML AutoML.
 
 ## Installation
 
@@ -78,7 +80,6 @@ The following metrics can be specified for AutoML model selection using the `--m
 - `results.json`: Evaluation metrics
 - `visualizations/`: t-SNE and distribution plots
 - `models/`: Saved trained models
-- `data/gen/`: Generated synthetic data
 
 ## Examples
 
@@ -97,4 +98,30 @@ python main.py --ds appliances --model all --ms automl --time_budget 600 --metri
 
 ## Configuration
 
-Model parameters can be modified in `config.py` (epochs, hidden dimensions, learning rates, etc.).
+Model parameters can be modified in `config/config.py` (epochs, hidden dimensions, learning rates, etc.).
+
+## Extending the Codebase
+
+### Adding a New Dataset
+
+To add a new dataset, modify the following file:
+
+1. **`src/data_loading.py`**: Add a new conditional branch in the `data_loading()` function to load your dataset. Return a `pd.DataFrame` with numerical columns only.
+2. **`main.py`** (optional): Update the help text for the `--ds` argument to include your new dataset name.
+
+For domain adaptation datasets (like "air"), return a tuple `(source_data, target_data)` and update `src/pipeline.py` and `src/data_preprocessing.py` if special handling is needed.
+
+### Adding a New Model
+
+To add a new model, modify the following files:
+
+1. **`config/config.py`**:
+
+   - Add model configuration to `DEEP_MODELS_CONFIG` (for deep learning models) or `TIMESERIES_MODELS_CONFIG` (for statistical models)
+   - Register the model in `MODEL_SELECTION_CONFIG["available_models"]` and add to either `"deep_models"` or `"timeseries_models"` list
+
+2. **`src/model_generation.py`**: Add a new conditional branch in the `_train_deep_model()` function to handle model initialization, training, data generation, and saving. Ensure the model returns generated data with shape `(num_samples, seq_len, num_features)`.
+
+3. **`src/automl.py`** (optional, for AutoML support): Create an estimator class inheriting from `BaseEstimator` and register it in the `automl_model_selection()` function.
+
+4. **`models/your_new_model.py`** (if needed): Create a separate implementation file for complex models and import it in `src/model_generation.py`.
