@@ -75,6 +75,19 @@ The following metrics can be specified for AutoML model selection using the `--m
 
 **Note**: All comprehensive metrics are calculated for each model, but AutoML selects the best model based on the specified metric.
 
+## Generated Data Characteristics
+
+The pipeline generates synthetic time series data with the following characteristics:
+
+- **Sequence Length**: The sequence length is automatically determined using autocorrelation analysis on the input data. The optimal length is bounded between 30-100 time steps (rounded to the nearest multiple of 5), with a default fallback of 125 if autocorrelation analysis fails. This ensures sequences capture meaningful temporal patterns in the data.
+
+- **Number of Generated Time Series**: The number of generated time series samples equals the number of training sequences, which is 90% of the total sequences created from the input dataset (10% is reserved for testing). For the Air dataset with domain adaptation, the split is 90% training, 10% validation, with target domain data used for testing.
+
+- **Data Shape**: Generated data has shape `(num_samples, sequence_length, num_features)`, where:
+  - `num_samples`: Number of generated time series (equal to number of training sequences)
+  - `sequence_length`: Determined by autocorrelation analysis (typically 30-100, default 125)
+  - `num_features`: Number of features in the original dataset
+
 ## Output
 
 - `results.json`: Evaluation metrics
