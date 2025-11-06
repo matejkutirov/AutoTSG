@@ -1,13 +1,4 @@
 {
-  "_metadata": {
-    "description": "AutoML model selection results with time budget constraints",
-    "generated_data_info": {
-      "sequence_length": "Automatically determined via autocorrelation analysis (typically 30-100 time steps, rounded to nearest multiple of 5, default 125 if analysis fails)",
-      "num_time_series": "Equal to the number of training sequences (90% of total sequences created from input dataset, 10% reserved for testing)",
-      "data_shape": "(num_samples, sequence_length, num_features)",
-      "note": "For Air dataset with domain adaptation: 90% training, 10% validation, with target domain data used for testing"
-    }
-  },
   "google": {
     "time_budget_120": {
       "metric": "RMSE",
