@@ -1274,7 +1274,7 @@ def automl_model_selection(
 
     # Save AutoML results to JSON file
     save_automl_results(
-        dataset_name, metric, time_budget, all_results, best_config, best_score
+        dataset_name, metric, time_budget, all_results, best_config, best_score, train_sequences,
     )
 
     return {
@@ -1287,7 +1287,7 @@ def automl_model_selection(
 
 
 def save_automl_results(
-    dataset_name, metric, time_budget, all_results, best_config, best_score
+    dataset_name, metric, time_budget, all_results, best_config, best_score, train_sequences=None,
 ):
     """Save AutoML results to a JSON file"""
     import json
@@ -1330,6 +1330,19 @@ def save_automl_results(
     # Initialize dataset structure if it doesn't exist
     if dataset_name not in existing_results:
         existing_results[dataset_name] = {}
+
+    # Update dataset-level metadata with dynamic generated data info
+    if train_sequences is not None and len(train_sequences.shape) == 3:
+        if "_generated_data_info" not in existing_results[dataset_name]:
+            existing_results[dataset_name]["_generated_data_info"] = {}
+        existing_results[dataset_name]["_generated_data_info"].update(
+            {
+                "num_series": int(train_sequences.shape[0]),
+                "length_per_series": int(train_sequences.shape[1]),
+                "num_features": int(train_sequences.shape[2]),
+            }
+        )
+
 
     # Add or update the time budget entry
     time_budget_key = f"time_budget_{time_budget}"
