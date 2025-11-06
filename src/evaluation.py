@@ -122,19 +122,27 @@ def evaluation(model_results: Dict[str, Any]) -> Dict[str, float]:
     # Save results to JSON file
     # Extract dataset from model_results if available, otherwise use a default
     dataset = model_results.get("dataset", "unknown")
-    save_results_to_json(model_results["model_type"], metrics, dataset)
+    save_results_to_json(model_results["model_type"], metrics, dataset, generated_data)
 
     return metrics
 
 
 def save_results_to_json(
-    model_type: str, metrics: Dict[str, float], dataset: str
+    model_type: str,
+    metrics: Dict[str, float],
+    dataset: str,
+    generated_data: np.ndarray = None,
 ) -> None:
     """Save evaluation results to a JSON file
 
     The JSON structure will be:
     {
       "google": {
+        "_generated_data_info": {
+          "num_series": 100,
+          "length_per_series": 125,
+          "num_features": 5
+        },
         "arima": {
           "RMSE": 0.1234,
           "MAE": 0.0987,
@@ -149,6 +157,11 @@ def save_results_to_json(
         }
       },
       "air": {
+        "_generated_data_info": {
+          "num_series": 80,
+          "length_per_series": 100,
+          "num_features": 6
+        },
         "arima": {
           ...
         }
@@ -169,6 +182,18 @@ def save_results_to_json(
     # Initialize dataset structure if it doesn't exist
     if dataset not in existing_results:
         existing_results[dataset] = {}
+
+    # Update dataset-level metadata with dynamic generated data info
+    if generated_data is not None and len(generated_data.shape) == 3:
+        if "_generated_data_info" not in existing_results[dataset]:
+            existing_results[dataset]["_generated_data_info"] = {}
+        existing_results[dataset]["_generated_data_info"].update(
+            {
+                "num_series": int(generated_data.shape[0]),
+                "length_per_series": int(generated_data.shape[1]),
+                "num_features": int(generated_data.shape[2]),
+            }
+        )
 
     # Add new results under the dataset
     existing_results[dataset][model_type] = metrics
